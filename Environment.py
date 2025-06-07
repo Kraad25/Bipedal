@@ -17,55 +17,7 @@ from Box2D.b2 import (
 )
 
 import pygame
-
-# Rendering Constants
-SCREEN_WIDTH = 600
-SCREEN_HEIGHT = 400
-FPS = 60
-RENDER_MODE = "human"
-SCALE = 30.0  # Scale factor for Box2D units to pixels
-
-VIEWPORT_W = 600
-VIEWPORT_H = 400
-
-TERRAIN_STEP = 14 / SCALE
-TERRAIN_LENGTH = 200  # in steps
-TERRAIN_HEIGHT = VIEWPORT_H / SCALE / 4
-TERRAIN_GRASS = 10  # low long are grass spots, in steps
-TERRAIN_STARTPAD = 20  # in steps
-FRICTION = 2.5
-
-# Box2D Constants
-SCALE = 30.0  # Scale factor for Box2D units to pixels
-HULL_POLY = [(-30, +9), (+6, +9), (+34, +1), (+34, -8), (-30, -8)]
-LEG_DOWN = -8 / SCALE
-LEG_W, LEG_H = 8 / SCALE, 34 / SCALE
-
-
-HULL_FD = fixtureDef(
-    shape=polygonShape(vertices=[(x / SCALE, y / SCALE) for x, y in HULL_POLY]),
-    density=5.0,
-    friction=0.1,
-    categoryBits=0x0020,
-    maskBits=0x001,  # collide only with ground
-    restitution=0.0,
-)  # 0.99 bouncy
-
-LEG_FD = fixtureDef(
-    shape=polygonShape(box=(LEG_W / 2, LEG_H / 2)),
-    density=1.0,
-    restitution=0.0,
-    categoryBits=0x0020,
-    maskBits=0x001,
-)
-
-LOWER_FD = fixtureDef(
-    shape=polygonShape(box=(0.8 * LEG_W / 2, LEG_H / 2)),
-    density=1.0,
-    restitution=0.0,
-    categoryBits=0x0020,
-    maskBits=0x001,
-)
+from data import *
 
 class BipedalWalkerEnv(gym.Env):
     # Metadata -> Contains information about rendering options.
@@ -77,6 +29,7 @@ class BipedalWalkerEnv(gym.Env):
         self.world = Box2D.b2World(gravity=(0, -10), doSleep=True)
         self.hull = None
         self.terrain = []
+        self.cloud_positions = []  # List to store cloud positions
         
         self.render_mode = render_mode
         self.fps = self.metadata["render_fps"]
@@ -95,10 +48,38 @@ class BipedalWalkerEnv(gym.Env):
         )
 
     def reset(self):
-        self._generate_terrain()
+        self._generate_background()
 
+    def step(self, action):
+        pass
+    
+    def render(self):
+            self._render_setup()
+
+            self._draw_background()
+
+            pygame.display.flip()
+            self.clock.tick(self.fps)
+
+    def close(self):
+        if self.screen is not None:
+            pygame.quit()
+            self.screen = None
+            self.clock = None
+
+    def _render_setup(self):
+        if self.render_mode == "human" and self.render_mode in self.metadata["render_modes"]:
+            if self.screen is None:
+                pygame.init()
+                self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+                self.clock = pygame.time.Clock()
+
+            pygame.display.set_caption("Bipedal Walker")
+            self.screen.fill((25, 189, 255))
+
+    
     def _generate_terrain(self):
-        self.terrain = [] # # Stores Box2D static bodies for terrain (used for collisions)
+        self.terrain = [] # Stores Box2D static bodies for terrain (used for collisions)
         self.terrain_x = []
         self.terrain_y = []
 
@@ -137,36 +118,46 @@ class BipedalWalkerEnv(gym.Env):
             self.terrain_poly.append((poly, color))     
         self.terrain.reverse() # Reverse the terrain to match Box2D's coordinate system
 
-    def step(self, action):
-        pass
+    def _generate_clouds(self):
+        self.cloud_positions = []
+        sky_top = VIEWPORT_H / SCALE 
+        sky_bottom = sky_top * 0.90  
+        for _ in range(5):
+            x = self.np_random.uniform(0, VIEWPORT_W/SCALE)
+            y = self.np_random.uniform(sky_bottom, sky_top)
+            self.cloud_positions.append((x, y))
+
+    def _draw_terrain(self):
+        for polygon, color in self.terrain_poly:
+            scaled_poly = []
+            for x, y in polygon:
+                px = x * SCALE
+                py = SCREEN_HEIGHT - y * SCALE  # flip Y for Pygame
+                scaled_poly.append((px, py))
+            pygame.draw.polygon(self.screen, color, scaled_poly)
     
-    def render(self):
-        if self.render_mode == "human" and self.render_mode in self.metadata["render_modes"]:
-            if self.screen is None:
-                pygame.init()
-                self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-                self.clock = pygame.time.Clock()
+    def _draw_clouds(self):
+        cloud_img = pygame.image.load("assets/Cloud.png").convert_alpha()
+        self.cloud = pygame.transform.scale(cloud_img, (128, 80))
+        for cloud_x, cloud_y in self.cloud_positions:
+            screen_x = cloud_x * SCALE
+            screen_y = SCREEN_HEIGHT - cloud_y * SCALE
+            self.screen.blit(self.cloud,(screen_x, screen_y))
+    
+    def _get_robot_intial_position(self):
+        starting_area = TERRAIN_STARTPAD * TERRAIN_STEP
+        init_x = starting_area / 2
+        init_y = TERRAIN_HEIGHT + 2 * LEG_H
 
-            pygame.display.set_caption("Bipedal Walker")
-            self.screen.fill((25, 189, 255))
+        return init_x, init_y
 
-            # Draw terrain
-            for poly, color in self.terrain_poly:
-                scaled_poly = []
-                for x, y in poly:
-                    px = x * SCALE
-                    py = SCREEN_HEIGHT - y * SCALE  # flip Y for Pygame
-                    scaled_poly.append((px, py))
-                pygame.draw.polygon(self.screen, color, scaled_poly)
+    def _generate_background(self):
+        self._generate_terrain()
+        self._generate_clouds()
 
-            pygame.display.flip()
-            self.clock.tick(FPS)
-
-    def close(self):
-        if self.screen is not None:
-            pygame.quit()
-            self.screen = None
-            self.clock = None
+    def _draw_background(self):
+        self._draw_terrain()
+        self._draw_clouds()
 
 if __name__ == "__main__":
     env = BipedalWalkerEnv()
