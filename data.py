@@ -64,3 +64,7 @@ LOWER_FD = fixtureDef(
     categoryBits=0x0020,
     maskBits=0x001,
 )
+
+
+INITIAL_RANDOM_FORCE = 5
+MOTORS_TORQUE = 80

@@ -17,6 +17,7 @@ from Box2D.b2 import (
 )
 
 import pygame
+from pygame import gfxdraw
 from data import *
 
 class BipedalWalkerEnv(gym.Env):
@@ -48,18 +49,30 @@ class BipedalWalkerEnv(gym.Env):
         )
 
     def reset(self):
+        super().reset(seed=None)    
         self._generate_background()
+
+        initial_x, initial_y = self._get_robot_intial_position()
+        self.legs = []
+        self.joints = []
+
+        self.hull = self._create_hull(initial_x, initial_y)
+        self._create_legs(initial_x, initial_y)
+        self._apply_initial_random_force_to_hull()
+
+        self.drawlist = self.terrain + self.legs + [self.hull]
 
     def step(self, action):
         pass
     
     def render(self):
-            self._render_setup()
+        self._render_setup()
 
-            self._draw_background()
+        self._draw_background()
+        self._draw_robot()
 
-            pygame.display.flip()
-            self.clock.tick(self.fps)
+        pygame.display.flip()
+        self.clock.tick(self.fps)
 
     def close(self):
         if self.screen is not None:
@@ -143,6 +156,46 @@ class BipedalWalkerEnv(gym.Env):
             screen_x = cloud_x * SCALE
             screen_y = SCREEN_HEIGHT - cloud_y * SCALE
             self.screen.blit(self.cloud,(screen_x, screen_y))
+
+    def _draw_robot(self):
+        for obj in self.drawlist:
+            for fixture in obj.fixtures:
+                transformation = fixture.body.transform
+
+                if type(fixture.shape) is circleShape:
+                    radius_point = fixture.shape.radius * SCALE
+                    center_position = (transformation * fixture.shape.pos) * SCALE
+                    center_position = (center_position[0], SCREEN_HEIGHT - center_position[1]) # flip Y for Pygame
+                    
+                    pygame.draw.circle(self.screen, 
+                                       color=obj.color1, 
+                                       center=center_position, 
+                                       radius=radius_point
+                                       )
+                    
+                    pygame.draw.circle(self.screen,
+                                       color=obj.color2, 
+                                       center=center_position, 
+                                       radius=radius_point
+                                       )
+                else:
+                    path = [transformation * vertice * SCALE for vertice in fixture.shape.vertices]
+                    path = [(p[0], SCREEN_HEIGHT - p[1]) for p in path] # flip Y for Pygame
+                    if len(path) > 2:
+                        pygame.draw.polygon(self.screen, color=obj.color1, points=path)
+                        gfxdraw.aapolygon(self.screen, path, obj.color1)
+                        path.append(path[0])  # Close the polygon
+
+                        pygame.draw.polygon(self.screen, color=obj.color2, points=path, width=1)
+                        gfxdraw.aapolygon(self.screen, path, obj.color2)
+                    else:
+                        pygame.draw.aaline(self.screen,
+                                           start_pos=path[0],
+                                           end_pos=path[1],
+                                           color=obj.color1,
+                                           )
+
+
     
     def _get_robot_intial_position(self):
         starting_area = TERRAIN_STARTPAD * TERRAIN_STEP
@@ -150,6 +203,71 @@ class BipedalWalkerEnv(gym.Env):
         init_y = TERRAIN_HEIGHT + 2 * LEG_H
 
         return init_x, init_y
+    
+    def _create_hull(self,x ,y):
+        hull = self.world.CreateDynamicBody(position=(x, y), fixtures=HULL_FD)
+        hull.color1 = (127, 51, 229)
+        hull.color2 = (76, 76, 127)
+        return hull
+    
+    def _apply_initial_random_force_to_hull(self):
+        random_force_in_x = self.np_random.uniform(-INITIAL_RANDOM_FORCE, INITIAL_RANDOM_FORCE)
+        self.hull.ApplyForceToCenter((random_force_in_x, 0), True)
+
+    def _create_legs(self, initial_x, initial_y):
+        for i in [-1, 1]:
+            self._create_leg(i, initial_x, initial_y)
+
+    def _create_leg(self, side, initial_x, initial_y):
+        upper_leg  = self.world.CreateDynamicBody(
+            position=(initial_x, initial_y - LEG_H / 2 - LEG_DOWN),
+            angle=(side*0.05),
+            fixtures=LEG_FD,
+        )
+        upper_leg .color1 = (153 - side * 25, 76 - side * 25, 127 - side * 25)
+        upper_leg .color2 = (102 - side * 25, 51 - side * 25, 76 - side * 25)
+     
+        hip_joint = revoluteJointDef(
+            bodyA=self.hull,
+            bodyB=upper_leg,
+            localAnchorA=(0, LEG_DOWN),
+            localAnchorB=(0, LEG_H / 2),
+            enableMotor=True,
+            enableLimit=True,
+            maxMotorTorque=MOTORS_TORQUE,
+            motorSpeed=side,  # ±1 to mirror the direction
+            lowerAngle=-0.8,
+            upperAngle=1.1,
+        )
+
+        self.legs.append(upper_leg)
+        self.joints.append(self.world.CreateJoint(hip_joint))
+
+        lower_leg = self.world.CreateDynamicBody(
+            position=(initial_x, initial_y - LEG_H * 3 / 2 - LEG_DOWN),
+            angle=(side*0.05),
+            fixtures=LOWER_FD,
+        )
+        lower_leg.color1 = (153 - side * 25, 76 - side * 25, 127 - side * 25)
+        lower_leg.color2 = (102 - side * 25, 51 - side * 25, 76 - side * 25)
+
+        knee_joint = revoluteJointDef(
+            bodyA=upper_leg,
+            bodyB=lower_leg,
+            localAnchorA=(0, -LEG_H / 2),
+            localAnchorB=(0, LEG_H / 2),
+            enableMotor=True,
+            enableLimit=True,
+            maxMotorTorque=MOTORS_TORQUE,
+            motorSpeed=side,  # ±1 to mirror the direction
+            lowerAngle=-0.8,
+            upperAngle=1.1,
+        )
+
+        lower_leg.ground_contact = False
+
+        self.legs.append(lower_leg)
+        self.joints.append(self.world.CreateJoint(knee_joint))
 
     def _generate_background(self):
         self._generate_terrain()
