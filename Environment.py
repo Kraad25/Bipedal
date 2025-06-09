@@ -1,15 +1,11 @@
-import math
-from typing import TYPE_CHECKING, List, Optional
 import numpy as np
 
 import gymnasium as gym
-from gymnasium import error, spaces
-from gymnasium.error import DependencyNotInstalled
+from gymnasium import spaces
 from gymnasium.utils import EzPickle
 import Box2D
 from Box2D.b2 import (
     circleShape,
-    contactListener,
     edgeShape,
     fixtureDef,
     polygonShape,
@@ -18,38 +14,54 @@ from Box2D.b2 import (
 
 import pygame
 from pygame import gfxdraw
+
 from data import *
+from ContactDetector import ContactDetector
+
 
 class BipedalWalkerEnv(gym.Env):
     # Metadata -> Contains information about rendering options.
     metadata = {"render_modes": [RENDER_MODE], "render_fps": FPS}
 
-    def __init__(self, render_mode="human"):
+    def __init__(self, render_mode="human", training_mode="Standing"):
         EzPickle.__init__(self, render_mode)
 
+        # Box2D world setup
         self.world = Box2D.b2World(gravity=(0, -10), doSleep=True)
         self.hull = None
-        self.terrain = []
+
+        # World parameters
+        self.terrain = [] # Stores Box2D static bodies for terrain (used for collisions)
         self.cloud_positions = []  # List to store cloud positions
         
+        # Rendering parameters
         self.render_mode = render_mode
         self.fps = self.metadata["render_fps"]
         self.clock = None
         self.screen = None
 
+        # Fixture definitions
         self.fd_polygon = fixtureDef(
             shape=polygonShape(vertices=[(0, 0), (1, 0), (1, -1), (0, -1)]),
             friction=FRICTION,
         )
-
         self.fd_edge = fixtureDef(
             shape=edgeShape(vertices=[(0, 0), (1, 1)]),
             friction=FRICTION,
             categoryBits=0x0001,
         )
 
-    def reset(self):
-        super().reset(seed=None)    
+        # Action and observation spaces
+        self.training_mode = training_mode
+        self.current_step = 0
+        self.prev_shaping = None
+
+        if self.training_mode == "Standing":
+            self.action_space = spaces.Box(STANDING_ACTION_LOW, STANDING_ACTION_HIGH)
+            self.observation_space = spaces.Box(STANDING_OBSERVATION_LOW, STANDING_OBSERVATION_HIGH)
+
+    def reset(self):        
+        self._reset_episode_variables()
         self._generate_background()
 
         initial_x, initial_y = self._get_robot_intial_position()
@@ -58,12 +70,22 @@ class BipedalWalkerEnv(gym.Env):
 
         self.hull = self._create_hull(initial_x, initial_y)
         self._create_legs(initial_x, initial_y)
-        self._apply_initial_random_force_to_hull()
+        #self._apply_initial_random_force_to_hull()
 
         self.drawlist = self.terrain + self.legs + [self.hull]
 
     def step(self, action):
-        pass
+        self.current_step += 1
+        
+        self._apply_action(action)
+        self._simulate_world()
+
+        state = self._get_state()
+    
+        reward = self._calculate_reward(state, action)
+        terminated, truncated = self._check_done_conditions(state)
+
+        return np.array(state, dtype=np.float32), reward, terminated, truncated, {}
     
     def render(self):
         self._render_setup()
@@ -89,10 +111,10 @@ class BipedalWalkerEnv(gym.Env):
 
             pygame.display.set_caption("Bipedal Walker")
             self.screen.fill((25, 189, 255))
+            self.cloud_img = pygame.image.load("assets/Cloud.png").convert_alpha()
 
     
     def _generate_terrain(self):
-        self.terrain = [] # Stores Box2D static bodies for terrain (used for collisions)
         self.terrain_x = []
         self.terrain_y = []
 
@@ -132,11 +154,10 @@ class BipedalWalkerEnv(gym.Env):
         self.terrain.reverse() # Reverse the terrain to match Box2D's coordinate system
 
     def _generate_clouds(self):
-        self.cloud_positions = []
-        sky_top = VIEWPORT_H / SCALE 
+        sky_top = SCREEN_HEIGHT / SCALE 
         sky_bottom = sky_top * 0.90  
         for _ in range(5):
-            x = self.np_random.uniform(0, VIEWPORT_W/SCALE)
+            x = self.np_random.uniform(0, SCREEN_WIDTH/SCALE)
             y = self.np_random.uniform(sky_bottom, sky_top)
             self.cloud_positions.append((x, y))
 
@@ -150,8 +171,7 @@ class BipedalWalkerEnv(gym.Env):
             pygame.draw.polygon(self.screen, color, scaled_poly)
     
     def _draw_clouds(self):
-        cloud_img = pygame.image.load("assets/Cloud.png").convert_alpha()
-        self.cloud = pygame.transform.scale(cloud_img, (128, 80))
+        self.cloud = pygame.transform.scale(self.cloud_img, (128, 80))
         for cloud_x, cloud_y in self.cloud_positions:
             screen_x = cloud_x * SCALE
             screen_y = SCREEN_HEIGHT - cloud_y * SCALE
@@ -194,7 +214,6 @@ class BipedalWalkerEnv(gym.Env):
                                            end_pos=path[1],
                                            color=obj.color1,
                                            )
-
 
     
     def _get_robot_intial_position(self):
@@ -269,6 +288,100 @@ class BipedalWalkerEnv(gym.Env):
         self.legs.append(lower_leg)
         self.joints.append(self.world.CreateJoint(knee_joint))
 
+    def _apply_action(self, action):
+        # Torque Control
+        # Left Hip
+        self.joints[0].motorSpeed = float(SPEED_HIP * np.sign(action[0])) # Speed is in [-1, 1]
+        self.joints[0].maxMotorTorque = float(MOTORS_TORQUE * np.clip(abs(action[0]), 0, 1)) # Torque is 0-100% of MOTORS_TORQUE(80)
+
+        # Left Knee
+        self.joints[1].motorSpeed = float(SPEED_KNEE * np.sign(action[1]))
+        self.joints[1].maxMotorTorque = float(MOTORS_TORQUE * np.clip(abs(action[1]), 0, 1))
+
+        # Right Hip
+        self.joints[2].motorSpeed = float(SPEED_HIP * np.sign(action[2]))
+        self.joints[2].maxMotorTorque = float(MOTORS_TORQUE * np.clip(abs(action[2]), 0, 1))
+
+        # Right Knee
+        self.joints[3].motorSpeed = float(SPEED_KNEE * np.sign(action[3]))
+        self.joints[3].maxMotorTorque = float(MOTORS_TORQUE * np.clip(abs(action[3]), 0, 1))
+
+    def _simulate_world(self):
+        self.world.Step(1.0 / FPS, 6 * 30, 2 * 30)
+        position = self.hull.position
+        self.scroll = position.x - (SCREEN_WIDTH / SCALE) / 5 # Offset for scrolling
+
+    def _get_state(self):
+        velocity = self.hull.linearVelocity
+
+        state = [
+            # Hull
+            self.hull.angle,
+            2.0* self.hull.angularVelocity/self.fps, # Normalized angular velocity(rad/frame)
+            0.3*velocity.x*(SCREEN_WIDTH / SCALE) / self.fps, # Normalized linear velocity in X
+            0.3*velocity.y*(SCREEN_HEIGHT / SCALE) / self.fps, # Normalized linear velocity in Y
+
+            # Joints
+            # Left Hip
+            self.joints[0].angle,
+            self.joints[0].speed/SPEED_HIP,
+
+            # Left Knee
+            self.joints[1].angle + 1.0, # +1.0 to avoid negative values
+            self.joints[1].speed/SPEED_KNEE,
+            1.0 if self.legs[1].ground_contact else 0.0, # Left Foot contact
+
+            # Right Hip
+            self.joints[2].angle,
+            self.joints[2].speed/SPEED_HIP,
+
+            # Right Knee
+            self.joints[3].angle + 1.0, # +1.0 to avoid negative values
+            self.joints[3].speed/SPEED_KNEE,
+            1.0 if self.legs[3].ground_contact else 0.0, # Right Foot contact
+            ]
+        return state
+    
+    def _check_fallen(self, state):
+        return self.game_over or abs(state[0]) > MAX_TILT_ANGLE
+    
+    def _calculate_reward(self, state, action):
+        shaping = 5.0 * abs(state[0])
+        
+        reward = 0
+        if self.prev_shaping is not None:
+            reward = self.prev_shaping - shaping
+        self.prev_shaping = shaping
+
+        for a in action:
+            reward -= 0.001 * np.clip(np.abs(a), 0, 1)
+        
+        if self.current_step >= MAX_STEPS:
+            reward += 10.0
+        if self._check_fallen(state):
+            reward -= 10.0
+
+        return reward
+    
+    def _check_done_conditions(self, state):
+        terminated = False
+        truncated = False
+        if self.current_step >= MAX_STEPS:
+            truncated = True
+        
+        if self._check_fallen(state):
+            terminated = True
+
+        return terminated, truncated
+    
+    def _reset_episode_variables(self):
+        self.scroll = 0.0
+        self.current_step = 0 
+        self.prev_shaping = None
+        self.world.contactListener_bug_workaround = ContactDetector(self)
+        self.world.contactListener = self.world.contactListener_bug_workaround
+        self.game_over = False
+
     def _generate_background(self):
         self._generate_terrain()
         self._generate_clouds()
@@ -281,13 +394,19 @@ if __name__ == "__main__":
     env = BipedalWalkerEnv()
     running = True
     env.reset()
-    env.render()
 
     while running:
+        action = env.action_space.sample()  # Random action for testing
+        observation, reward, terminated, truncated, info = env.step(action)
+        env.render()
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+        
+        if terminated or truncated:
+            print("Episode finished.")
+            running = False
 
-        env.render()
 
     env.close()

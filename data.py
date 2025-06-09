@@ -1,19 +1,9 @@
 import math
-from typing import TYPE_CHECKING, List, Optional
 import numpy as np
 
-import gymnasium as gym
-from gymnasium import error, spaces
-from gymnasium.error import DependencyNotInstalled
-from gymnasium.utils import EzPickle
-import Box2D
 from Box2D.b2 import (
-    circleShape,
-    contactListener,
-    edgeShape,
     fixtureDef,
     polygonShape,
-    revoluteJointDef,
 )
 
 # Rendering Constants
@@ -23,12 +13,9 @@ FPS = 60
 RENDER_MODE = "human"
 SCALE = 30.0  # Scale factor for Box2D units to pixels
 
-VIEWPORT_W = 600
-VIEWPORT_H = 400
-
 TERRAIN_STEP = 14 / SCALE
 TERRAIN_LENGTH = 200  # in steps
-TERRAIN_HEIGHT = VIEWPORT_H / SCALE / 4
+TERRAIN_HEIGHT = SCREEN_HEIGHT / SCALE / 4
 TERRAIN_GRASS = 10  # low long are grass spots, in steps
 TERRAIN_STARTPAD = 20  # in steps
 FRICTION = 2.5
@@ -68,3 +55,61 @@ LOWER_FD = fixtureDef(
 
 INITIAL_RANDOM_FORCE = 5
 MOTORS_TORQUE = 80
+SPEED_HIP = 4
+SPEED_KNEE = 6
+MAX_TILT_ANGLE = 0.5  # radians
+
+MAX_STEPS = 100
+
+# Standing Pose
+# Observation Space
+STANDING_OBSERVATION_LOW = np.array([
+    # Hull
+    -math.pi, # Hull angle
+    -3.0, # Hull angular velocity
+    -3.0, # Hull linear velocity in X
+    -3.0, # Hull linear velocity in Y
+
+    # Joints
+    -math.pi, # Left Hip angle
+    -3.0, # Left Hip angular velocity
+
+    -math.pi, # Left Knee angle
+    -3.0, # Left Knee angular velocity
+    -0.0, # Left Foot contact (0.0 = no contact, 1.0 = contact)
+
+    -math.pi, # Right Hip angle
+    -3.0, # Right Hip angular velocity
+
+    -math.pi, # Right Knee angle
+    -3.0, # Right Knee angular velocity
+    -0.0, # Right Foot contact
+]).astype(np.float32)
+
+STANDING_OBSERVATION_HIGH = np.array([
+    # Hull
+    math.pi, # Hull angle
+    3.0, # Hull angular velocity
+    3.0, # Hull linear velocity in X
+    3.0, # Hull linear velocity in Y
+
+    # Joints
+    math.pi, # Left Hip angle
+    3.0, # Left Hip angular velocity
+
+    math.pi, # Left Knee angle
+    3.0, # Left Knee angular velocity
+    0.0, # Left Foot contact
+
+    math.pi, # Right Hip angle
+    3.0, # Right Hip angular velocity
+
+    math.pi, # Right Knee angle
+    3.0, # Right Knee angular velocity
+    0.0, # Right Foot contact
+]).astype(np.float32)
+
+# Action Space
+# Left-Hip, Left-Knee, Right-Hip, Right-Knee
+STANDING_ACTION_LOW = np.array([-1, -1, -1, -1]).astype(np.float32)
+STANDING_ACTION_HIGH = np.array([1, 1, 1, 1]).astype(np.float32)
