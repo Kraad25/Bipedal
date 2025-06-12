@@ -23,12 +23,13 @@ class BipedalWalkerEnv(gym.Env):
     # Metadata -> Contains information about rendering options.
     metadata = {"render_modes": [RENDER_MODE], "render_fps": FPS}
 
-    def __init__(self, render_mode="human", training_mode="Standing"):
+    def __init__(self, render_mode="human", training_mode="Standing", MaxSteps=None):
         EzPickle.__init__(self, render_mode)
 
         # Box2D world setup
-        self.world = Box2D.b2World(gravity=(0, -10), doSleep=True)
+        self.world = Box2D.b2World(gravity=(0, -9.8), doSleep=True)
         self.hull = None
+        self.max_steps = MaxSteps if MaxSteps is not None else None
 
         # World parameters
         self.terrain = [] # Stores Box2D static bodies for terrain (used for collisions)
@@ -60,7 +61,8 @@ class BipedalWalkerEnv(gym.Env):
             self.action_space = spaces.Box(STANDING_ACTION_LOW, STANDING_ACTION_HIGH)
             self.observation_space = spaces.Box(STANDING_OBSERVATION_LOW, STANDING_OBSERVATION_HIGH)
 
-    def reset(self):        
+    def reset(self, seed=None, options=None):
+        super().reset(seed=seed)        
         self._reset_episode_variables()
         self._generate_background()
 
@@ -74,6 +76,8 @@ class BipedalWalkerEnv(gym.Env):
 
         self.drawlist = self.terrain + self.legs + [self.hull]
 
+        return np.array(self._get_state(), dtype=np.float32), {}
+
     def step(self, action):
         self.current_step += 1
         
@@ -85,7 +89,7 @@ class BipedalWalkerEnv(gym.Env):
         reward = self._calculate_reward(state, action)
         terminated, truncated = self._check_done_conditions(state)
 
-        return np.array(state, dtype=np.float32), reward, terminated, truncated, {}
+        return np.array(state, dtype=np.float32), float(reward), terminated, truncated, {}
     
     def render(self):
         self._render_setup()
@@ -255,9 +259,11 @@ class BipedalWalkerEnv(gym.Env):
             enableLimit=True,
             maxMotorTorque=MOTORS_TORQUE,
             motorSpeed=side,  # ±1 to mirror the direction
-            lowerAngle=-0.8,
+            lowerAngle=-0.3927,
             upperAngle=1.1,
         )
+
+        upper_leg.ground_contact = False
 
         self.legs.append(upper_leg)
         self.joints.append(self.world.CreateJoint(hip_joint))
@@ -279,8 +285,8 @@ class BipedalWalkerEnv(gym.Env):
             enableLimit=True,
             maxMotorTorque=MOTORS_TORQUE,
             motorSpeed=side,  # ±1 to mirror the direction
-            lowerAngle=-0.8,
-            upperAngle=1.1,
+            lowerAngle=-0.785,
+            upperAngle=-0.1,
         )
 
         lower_leg.ground_contact = False
@@ -327,7 +333,7 @@ class BipedalWalkerEnv(gym.Env):
             self.joints[0].speed/SPEED_HIP,
 
             # Left Knee
-            self.joints[1].angle + 1.0, # +1.0 to avoid negative values
+            self.joints[1].angle,
             self.joints[1].speed/SPEED_KNEE,
             1.0 if self.legs[1].ground_contact else 0.0, # Left Foot contact
 
@@ -336,19 +342,19 @@ class BipedalWalkerEnv(gym.Env):
             self.joints[2].speed/SPEED_HIP,
 
             # Right Knee
-            self.joints[3].angle + 1.0, # +1.0 to avoid negative values
+            self.joints[3].angle,
             self.joints[3].speed/SPEED_KNEE,
             1.0 if self.legs[3].ground_contact else 0.0, # Right Foot contact
             ]
         return state
     
     def _check_fallen(self, state):
-        return self.game_over or abs(state[0]) > MAX_TILT_ANGLE
+        return self.game_over
     
     def _calculate_reward(self, state, action):
         shaping = 5.0 * abs(state[0])
         
-        reward = 0
+        reward = 0.0
         if self.prev_shaping is not None:
             reward = self.prev_shaping - shaping
         self.prev_shaping = shaping
@@ -366,8 +372,10 @@ class BipedalWalkerEnv(gym.Env):
     def _check_done_conditions(self, state):
         terminated = False
         truncated = False
-        if self.current_step >= MAX_STEPS:
-            truncated = True
+
+        if self.max_steps is not None:
+            if self.current_step >= self.max_steps:
+                truncated = True
         
         if self._check_fallen(state):
             terminated = True

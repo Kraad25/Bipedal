@@ -57,9 +57,9 @@ INITIAL_RANDOM_FORCE = 5
 MOTORS_TORQUE = 80
 SPEED_HIP = 4
 SPEED_KNEE = 6
-MAX_TILT_ANGLE = 0.5  # radians
+#MAX_TILT_ANGLE = 0.5  # radians
 
-MAX_STEPS = 100
+MAX_STEPS = 500
 
 # Standing Pose
 # Observation Space
@@ -97,19 +97,19 @@ STANDING_OBSERVATION_HIGH = np.array([
     math.pi, # Left Hip angle
     3.0, # Left Hip angular velocity
 
-    math.pi, # Left Knee angle
+    0.0, # Left Knee angle
     3.0, # Left Knee angular velocity
-    0.0, # Left Foot contact
+    1.0, # Left Foot contact
 
     math.pi, # Right Hip angle
     3.0, # Right Hip angular velocity
 
-    math.pi, # Right Knee angle
+    0.0, # Right Knee angle
     3.0, # Right Knee angular velocity
-    0.0, # Right Foot contact
+    1.0, # Right Foot contact
 ]).astype(np.float32)
 
 # Action Space
 # Left-Hip, Left-Knee, Right-Hip, Right-Knee
 STANDING_ACTION_LOW = np.array([-1, -1, -1, -1]).astype(np.float32)
-STANDING_ACTION_HIGH = np.array([1, 1, 1, 1]).astype(np.float32)
+STANDING_ACTION_HIGH = np.array([1, 0, 1, 0]).astype(np.float32)
