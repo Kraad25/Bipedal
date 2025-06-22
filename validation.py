@@ -13,12 +13,22 @@ def evaluate_model(model, env):
         env.render()
 
 if __name__ == "__main__":
-    env = BipedalWalkerEnv()
-    try:
-        model = PPO.load("ppo_standing", env=env)
-        print("Loaded existing model")
-    except Exception as e:
-        print("Train the model first")
-        exit(1)
+    mode="Walking"
+    env = BipedalWalkerEnv(mode=mode)
+
+    if mode=="Standing":
+        try:
+            model = PPO.load("ppo_bipedal_standing", env=env)
+            print("Loaded Standing Model")
+        except Exception as e:
+            print("Train the model first")
+            exit(1)
+    if mode=="Walking":
+        try:
+            model = PPO.load("ppo_bipedal_walking", env=env)
+            print("Loaded Standing Model")
+        except Exception as e:
+            print("Train the model first")
+            exit(1)
 
     evaluate_model(model, env)

@@ -21,7 +21,6 @@ class ContactDetector(contactListener):
         # Check if upper leg (knee) contacts ground
         for i in [0, 2]:  # upper legs
             if self.env.legs[i] in [bodyA, bodyB]:
-                print(f"Upper leg {i} contacted ground!")
                 self.env.game_over = True
 
     def EndContact(self, contact):

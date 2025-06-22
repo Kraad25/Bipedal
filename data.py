@@ -4,9 +4,10 @@ import numpy as np
 from Box2D.b2 import (
     fixtureDef,
     polygonShape,
+    edgeShape,
 )
 
-# Rendering Constants
+# Rendering and simulation constants
 SCREEN_WIDTH = 600
 SCREEN_HEIGHT = 400
 FPS = 60
@@ -18,6 +19,8 @@ TERRAIN_LENGTH = 200  # in steps
 TERRAIN_HEIGHT = SCREEN_HEIGHT / SCALE / 4
 TERRAIN_GRASS = 10  # low long are grass spots, in steps
 TERRAIN_STARTPAD = 20  # in steps
+
+LIDAR_RANGE = 160 / SCALE
 FRICTION = 2.5
 
 # Box2D Constants
@@ -26,7 +29,7 @@ HULL_POLY = [(-30, +9), (+6, +9), (+34, +1), (+34, -8), (-30, -8)]
 LEG_DOWN = -8 / SCALE
 LEG_W, LEG_H = 8 / SCALE, 34 / SCALE
 
-
+# Fixture definitions for Box2D
 HULL_FD = fixtureDef(
     shape=polygonShape(vertices=[(x / SCALE, y / SCALE) for x, y in HULL_POLY]),
     density=5.0,
@@ -52,64 +55,50 @@ LOWER_FD = fixtureDef(
     maskBits=0x001,
 )
 
+TERRAIN_EDGE_FD = fixtureDef(
+            shape=edgeShape(vertices=[(0, 0), (1, 1)]),
+            friction=FRICTION,
+            categoryBits=0x0001,
+        )
 
+# Simulation constants
 INITIAL_RANDOM_FORCE = 5
 MOTORS_TORQUE = 80
 SPEED_HIP = 4
 SPEED_KNEE = 6
 #MAX_TILT_ANGLE = 0.5  # radians
 
+# Training constants
 MAX_STEPS = 500
 
-# Standing Pose
 # Observation Space
-STANDING_OBSERVATION_LOW = np.array([
-    # Hull
-    -math.pi, # Hull angle
-    -3.0, # Hull angular velocity
-    -3.0, # Hull linear velocity in X
-    -3.0, # Hull linear velocity in Y
-
-    # Joints
-    -math.pi, # Left Hip angle
-    -3.0, # Left Hip angular velocity
-
-    -math.pi, # Left Knee angle
-    -3.0, # Left Knee angular velocity
-    -0.0, # Left Foot contact (0.0 = no contact, 1.0 = contact)
-
-    -math.pi, # Right Hip angle
-    -3.0, # Right Hip angular velocity
-
-    -math.pi, # Right Knee angle
-    -3.0, # Right Knee angular velocity
-    -0.0, # Right Foot contact
-]).astype(np.float32)
-
-STANDING_OBSERVATION_HIGH = np.array([
-    # Hull
-    math.pi, # Hull angle
-    3.0, # Hull angular velocity
-    3.0, # Hull linear velocity in X
-    3.0, # Hull linear velocity in Y
-
-    # Joints
-    math.pi, # Left Hip angle
-    3.0, # Left Hip angular velocity
-
-    0.0, # Left Knee angle
-    3.0, # Left Knee angular velocity
-    1.0, # Left Foot contact
-
-    math.pi, # Right Hip angle
-    3.0, # Right Hip angular velocity
-
-    0.0, # Right Knee angle
-    3.0, # Right Knee angular velocity
-    1.0, # Right Foot contact
-]).astype(np.float32)
+""" Hull, angle, angular velocity, linear velocity in X, linear velocity in Y
+    Left Hip, angular velocity
+    Left Knee, angular velocity, contact
+    Right Hip, angular velocity
+    Right Knee, angular velocity, contact
+    If Lidar is used, 10 more observations are added for Lidar readings
+"""
+Observation = {
+    "low": np.array([
+                -math.pi, -5.0, -5.0, -5.0, # Hull
+                -math.pi, -5.0, # Left Hip
+                -math.pi, -5.0, -0.0, # Left Knee
+                -math.pi, -5.0, # Right Hip
+                -math.pi, -5.0, -0.0 # Right Knee
+            ] + [-1.0]*10).astype(np.float32),  # 10 Lidar observations
+    "high": np.array([
+                math.pi, 5.0, 5.0, 5.0, # Hull
+                math.pi, 5.0, # Left Hip
+                math.pi, 5.0, 1.0, # Left Knee
+                math.pi, 5.0, # Right Hip
+                math.pi, 5.0, 1.0 # Right Knee
+            ] + [1.0]*10).astype(np.float32)  # 10 Lidar observations
+}
 
 # Action Space
 # Left-Hip, Left-Knee, Right-Hip, Right-Knee
-STANDING_ACTION_LOW = np.array([-1, -1, -1, -1]).astype(np.float32)
-STANDING_ACTION_HIGH = np.array([1, 0, 1, 0]).astype(np.float32)
+Action = {
+    "low": np.array([-1, -1, -1, -1]).astype(np.float32),
+    "high": np.array([1, 1, 1, 1]).astype(np.float32)
+}
