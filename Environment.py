@@ -14,8 +14,6 @@ from Background import Background
 from Robot import Robot
 from Renderer import Renderer
 
-import time
-
 class BipedalWalkerEnv(gym.Env):
     # Metadata -> Contains information about rendering options.
     metadata = {"render_modes": [RENDER_MODE], "render_fps": FPS}
@@ -31,7 +29,7 @@ class BipedalWalkerEnv(gym.Env):
 
         # Training Variables
         self.mode = mode
-        self.max_steps = MaxSteps if MaxSteps is not None else None
+        self.max_steps = MaxSteps
         self.current_step = 0
         self.prev_shaping = None        
 
@@ -41,7 +39,6 @@ class BipedalWalkerEnv(gym.Env):
 
     def reset(self, seed=None):
         super().reset(seed=seed)
-
 
         self._reset_episode_variables()
         
@@ -66,7 +63,6 @@ class BipedalWalkerEnv(gym.Env):
 
         self._apply_action(action)
         self._simulate_world()
-
 
         state = self._get_state()
         reward = self._calculate_reward(state, action)
