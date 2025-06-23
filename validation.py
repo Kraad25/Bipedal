@@ -1,34 +1,46 @@
+import pygame
 from stable_baselines3 import PPO
 from Environment import BipedalWalkerEnv
 from stable_baselines3.common.env_checker import check_env
 
-# Test trained agent
-def evaluate_model(model, env):
-    done = False
-    obs, _ = env.reset()
-    while not done:
-        action, _states = model.predict(obs)
-        obs, reward, terminated, truncated, _ = env.step(action)
-        done = terminated or truncated
-        env.render()
 
-if __name__ == "__main__":
-    mode="Walking"
-    env = BipedalWalkerEnv(mode=mode)
+# Environment
+env = BipedalWalkerEnv()
 
-    if mode=="Standing":
-        try:
-            model = PPO.load("ppo_bipedal_standing", env=env)
-            print("Loaded Standing Model")
-        except Exception as e:
-            print("Train the model first")
-            exit(1)
-    if mode=="Walking":
-        try:
-            model = PPO.load("ppo_bipedal_walking", env=env)
-            print("Loaded Standing Model")
-        except Exception as e:
-            print("Train the model first")
-            exit(1)
+# Load Models
+try:
+    model_stand = PPO.load("ppo_bipedal_standing", env=env)
+    model_walk = PPO.load("ppo_bipedal_walking", env=env)
+except Exception as e:
+    print("Train the models first")
+    exit(1)
 
-    evaluate_model(model, env)
+obs, _ = env.reset()
+done = False
+mode = "Standing"
+
+env.render()
+
+while not done:
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            done = True
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_d:
+                mode = "Walking"
+                env.mode = mode
+            if event.key == pygame.K_x:
+                mode = "Standing"
+                env.mode = mode
+
+    if mode == "Standing":
+        action, _ = model_stand.predict(obs)
+    if mode == "Walking":
+        action, _ = model_walk.predict(obs)
+
+    obs, reward, terminated, truncated, _ = env.step(action)
+    done = terminated or truncated
+
+    env.render()
+
+env.close()

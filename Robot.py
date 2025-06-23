@@ -2,17 +2,22 @@ from data import *
 from Box2D.b2 import revoluteJointDef
 
 class Robot():
-    def __init__(self, world):
+    def __init__(self, world, np_random):
         self.world = world
         self.hull = None
         self.legs = []
         self.joints = []        
+        self.np_random = np_random
 
     def create(self):
         initial_x, initial_y = self._get_robot_initial_position()
 
         self.hull = self._create_hull(initial_x, initial_y)
         self._create_legs(initial_x, initial_y)
+    
+    def _apply_initial_random_force_to_hull(self):
+        random_force_in_x = self.np_random.uniform(-INITIAL_RANDOM_FORCE, INITIAL_RANDOM_FORCE)
+        self.hull.ApplyForceToCenter((random_force_in_x, 0), True)
 
     # Getters #
     def get_joints(self):

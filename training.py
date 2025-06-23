@@ -16,7 +16,7 @@ if __name__ == '__main__':
     env = SubprocVecEnv([make_env() for _ in range(num_envs)])
     check_env(BipedalWalkerEnv(MaxSteps=500))
     try:
-        model = PPO.load("ppo_bipedal_walking", env=env)
+        model = PPO.load("ppo_bipedal_standing", env=env)
         print("Loaded existing model")
     except:
         model = PPO("MlpPolicy", env)
@@ -24,5 +24,5 @@ if __name__ == '__main__':
 
     model.learn(total_timesteps=2000_000, progress_bar=True)
 
-    model.save("ppo_bipedal_walking")
+    model.save("ppo_bipedal_standing")
     env.close()

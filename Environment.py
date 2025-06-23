@@ -42,6 +42,7 @@ class BipedalWalkerEnv(gym.Env):
     def reset(self, seed=None):
         super().reset(seed=seed)
 
+
         self._reset_episode_variables()
         
         self.background.generate()
@@ -55,13 +56,17 @@ class BipedalWalkerEnv(gym.Env):
         self.position = self.hull.position
         self.velocity = self.hull.linearVelocity
 
+        # if self.mode == "Standing":
+        #     self.robot._apply_initial_random_force_to_hull()
+            
         return np.array(self._get_state(), dtype=np.float32), {}
 
     def step(self, action):
         self.current_step += 1
-        
+
         self._apply_action(action)
         self._simulate_world()
+
 
         state = self._get_state()
         reward = self._calculate_reward(state, action)
@@ -273,7 +278,7 @@ class BipedalWalkerEnv(gym.Env):
 
         # Object Creations
         self.background = Background(self.world, self.np_random)
-        self.robot = Robot(self.world)
+        self.robot = Robot(self.world, self.np_random)
         self.renderer = Renderer()
 
         self.world.contactListener = ContactDetector(self)
