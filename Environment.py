@@ -39,7 +39,7 @@ class BipedalWalkerEnv(gym.Env):
 
     def reset(self, seed=None):
         super().reset(seed=seed)
-
+    
         self._reset_episode_variables()
         
         self.background.generate()
