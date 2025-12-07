@@ -1,5 +1,6 @@
 # Bipedal
  A simple 2-legged robot trained to stand and walk using reinforcement learning. Built with Gymnasium, Box2D and Stable-Baselines3.
+ Based on the Bipedal Walker environment from Gymnasium: https://gymnasium.farama.org/
 
  * 4 joints (2 per leg: hip & knee)
  * Central body/hull
